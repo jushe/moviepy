@@ -256,6 +256,10 @@ def ffmpeg_write_video(
         for t, frame in clip.iter_frames(
             logger=logger, with_times=True, fps=fps, dtype="uint8"
         ):
+            # Convert torch tensor to numpy if needed
+            if isinstance(frame, torch.Tensor):
+                frame = frame.cpu().numpy()
+            
             if clip.mask is not None:
                 mask = clip.mask.get_frame(t)
                 if isinstance(mask, torch.Tensor):
@@ -264,9 +268,7 @@ def ffmpeg_write_video(
                     mask = mask * 255
                 if mask.dtype != "uint8":
                     mask = mask.astype("uint8")
-                frame = np.dstack([frame,mask])
-                # im = Image.fromarray(frame)
-                # im.save("test_im.png")
+                frame = np.dstack([frame, mask])
             
             writer.write_frame(frame)
     if write_logfile:

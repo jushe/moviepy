@@ -1,11 +1,12 @@
 import math
 from dataclasses import dataclass
 
-import numpy as np
-from PIL import Image
+import torch
+import torchvision.transforms.functional as TF
 
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -59,17 +60,6 @@ class Rotate(Effect):
 
     def apply(self, clip: Clip) -> Clip:
         """Apply the effect to the clip."""
-        try:
-            resample = {
-                "bilinear": Image.BILINEAR,
-                "nearest": Image.NEAREST,
-                "bicubic": Image.BICUBIC,
-            }[self.resample]
-        except KeyError:
-            raise ValueError(
-                "'resample' argument must be either 'bilinear', 'nearest' or 'bicubic'"
-            )
-
         if hasattr(self.angle, "__call__"):
             get_angle = self.angle
         else:
@@ -83,46 +73,57 @@ class Rotate(Effect):
                 angle = math.degrees(angle)
 
             angle %= 360
+            
+            # Fast path for 90-degree rotations without special options
             if not self.center and not self.translate and not self.bg_color:
                 if (angle == 0) and self.expand:
                     return im
+                
+                # Use torch for fast 90-degree rotations
+                tensor = to_tensor(im)
                 if (angle == 90) and self.expand:
-                    transpose = [1, 0] if len(im.shape) == 2 else [1, 0, 2]
-                    return np.transpose(im, axes=transpose)[::-1]
+                    # Rotate 90 degrees counterclockwise
+                    result = torch.rot90(tensor, k=1, dims=[0, 1])
+                    return to_numpy(result)
                 elif (angle == 270) and self.expand:
-                    transpose = [1, 0] if len(im.shape) == 2 else [1, 0, 2]
-                    return np.transpose(im, axes=transpose)[:, ::-1]
+                    # Rotate 270 degrees counterclockwise (or 90 clockwise)
+                    result = torch.rot90(tensor, k=-1, dims=[0, 1])
+                    return to_numpy(result)
                 elif (angle == 180) and self.expand:
-                    return im[::-1, ::-1]
+                    # Rotate 180 degrees
+                    result = torch.rot90(tensor, k=2, dims=[0, 1])
+                    return to_numpy(result)
 
-            pillow_kwargs = {}
-
-            if self.bg_color is not None:
-                pillow_kwargs["fillcolor"] = self.bg_color
-
-            if self.center is not None:
-                pillow_kwargs["center"] = self.center
-
-            if self.translate is not None:
-                pillow_kwargs["translate"] = self.translate
-
-            # PIL expects uint8 type data. However a mask image has values in the
-            # range [0, 1] and is of float type.  To handle this we scale it up by
-            # a factor 'a' for use with PIL and then back again by 'a' afterwards.
-            if im.dtype == "float64":
-                # this is a mask image
-                a = 255.0
-            else:
-                a = 1
-
-            # call PIL.rotate
-            return (
-                np.array(
-                    Image.fromarray(np.array(a * im).astype(np.uint8)).rotate(
-                        angle, expand=self.expand, resample=resample, **pillow_kwargs
-                    )
-                )
-                / a
+            # For arbitrary angles, use torchvision's affine transformation
+            tensor = to_tensor(im)
+            
+            # Handle mask images (float64)
+            is_mask = im.dtype == "float64"
+            if is_mask:
+                tensor = tensor * 255.0
+            
+            # Convert from (H, W, C) to (C, H, W) for torchvision
+            if tensor.ndim == 3:
+                tensor = tensor.permute(2, 0, 1)
+            
+            # Rotate using torchvision
+            # Note: torchvision rotates clockwise, so we negate the angle
+            rotated = TF.rotate(
+                tensor, 
+                -angle,  # Negate for counterclockwise rotation
+                interpolation=TF.InterpolationMode.BILINEAR,
+                expand=self.expand,
+                fill=list(self.bg_color) if self.bg_color else [0]
             )
+            
+            # Convert back to (H, W, C) format
+            if rotated.ndim == 3:
+                rotated = rotated.permute(1, 2, 0)
+            
+            # Convert back from mask format if needed
+            if is_mask:
+                rotated = rotated / 255.0
+            
+            return to_numpy(rotated)
 
         return clip.transform(filter, apply_to=["mask"])

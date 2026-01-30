@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 
-import numpy as np
+import torch
 
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
 from moviepy.video.VideoClip import ImageClip
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -57,11 +58,12 @@ class Margin(Effect):
             new_w, new_h = w + self.left + self.right, h + self.top + self.bottom
             if clip.is_mask:
                 shape = (new_h, new_w)
-                bg = np.tile(self.opacity, (new_h, new_w)).astype(float).reshape(shape)
+                bg = torch.full(shape, self.opacity, dtype=torch.float32)
             else:
                 shape = (new_h, new_w, 3)
-                bg = np.tile(self.color, (new_h, new_w)).reshape(shape)
-            return bg
+                color_tensor = torch.tensor(self.color, dtype=torch.uint8)
+                bg = color_tensor.view(1, 1, 3).expand(new_h, new_w, 3).clone()
+            return to_numpy(bg)
 
         if isinstance(clip, ImageClip):
             im = make_bg(clip.w, clip.h)

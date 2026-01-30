@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from typing import Union
 
-import numpy as np
+import torch
 
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
 from moviepy.video.VideoClip import ImageClip
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -32,7 +33,7 @@ class MasksAnd(Effect):
         [[[0 0 0]]]
     """
 
-    other_clip: Union[Clip, np.ndarray]
+    other_clip: Union[Clip, "np.ndarray"]
 
     def apply(self, clip: Clip) -> Clip:
         """Apply the effect to the clip."""
@@ -40,13 +41,23 @@ class MasksAnd(Effect):
         if isinstance(self.other_clip, ImageClip):
             self.other_clip = self.other_clip.img
 
-        if isinstance(self.other_clip, np.ndarray):
-            return clip.image_transform(
-                lambda frame: np.minimum(frame, self.other_clip)
-            )
+        if not hasattr(self.other_clip, 'get_frame'):
+            # other_clip is a static array
+            def filter_func(frame):
+                tensor1 = to_tensor(frame)
+                tensor2 = to_tensor(self.other_clip)
+                result = torch.minimum(tensor1, tensor2)
+                return to_numpy(result)
+            
+            return clip.image_transform(filter_func)
         else:
-            return clip.transform(
-                lambda get_frame, t: np.minimum(
-                    get_frame(t), self.other_clip.get_frame(t)
-                )
-            )
+            # other_clip is a clip with get_frame method
+            def filter_func(get_frame, t):
+                frame1 = get_frame(t)
+                frame2 = self.other_clip.get_frame(t)
+                tensor1 = to_tensor(frame1)
+                tensor2 = to_tensor(frame2)
+                result = torch.minimum(tensor1, tensor2)
+                return to_numpy(result)
+            
+            return clip.transform(filter_func)
