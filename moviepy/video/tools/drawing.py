@@ -4,45 +4,50 @@ methods that are difficult to do with the existing Python libraries.
 
 import numpy as np
 import torch
+from moviepy.torch_utils import to_tensor, to_numpy, get_device
 
 def blit(img, picture, pos, mask=None):
     """Blit the image onto the target picture at the given position using PyTorch tensors."""
-    # 获取图像的高度和宽度
+    # Get image dimensions
     hi, wi = img.shape[:2]
 
-    # 获取目标位置
+    # Get target position
     x, y = pos
 
-    # 确保目标位置在画布范围内
+    # Ensure target position is within canvas bounds
     if y < 0 or y + hi > picture.shape[0] or x < 0 or x + wi > picture.shape[1]:
         raise ValueError("Blit position is out of bounds")
 
-    # 确保输入数据都是 PyTorch 张量且位于 GPU
-    if not isinstance(img, torch.Tensor):
-        img = torch.tensor(img, dtype=torch.uint8, device="cuda")
-    if not isinstance(picture, torch.Tensor):
-        picture = torch.tensor(picture, dtype=torch.uint8, device="cuda")
-    if mask is not None and not isinstance(mask, torch.Tensor):
-        mask = torch.tensor(mask, dtype=torch.uint8, device="cuda")
-
-    # 如果提供了遮罩，则根据遮罩进行混合
+    # Convert inputs to PyTorch tensors on configured device
+    img_tensor = to_tensor(img, dtype=torch.uint8)
+    picture_tensor = to_tensor(picture, dtype=torch.uint8)
+    
     if mask is not None:
-        # 遮罩需要与图像大小匹配
-        if mask.shape != img.shape[:2]:
+        mask_tensor = to_tensor(mask, dtype=torch.uint8)
+        # Mask must match image size
+        if mask_tensor.shape[:2] != img_tensor.shape[:2]:
             raise ValueError("Mask size must match the image size")
         
-        # 混合操作，逐通道处理
-        for i in range(3):  # 遍历 RGB 通道
-            picture[y:y+hi, x:x+wi, i] = torch.where(
-                mask[:hi, :wi] > 0,
-                img[:hi, :wi, i],  # 如果遮罩值大于 0，使用 img 的像素
-                picture[y:y+hi, x:x+wi, i]  # 否则保留原图像像素
+        # Blend with mask, processing each channel
+        if picture_tensor.ndim == 3 and picture_tensor.shape[2] == 3:
+            for i in range(3):  # Iterate through RGB channels
+                picture_tensor[y:y+hi, x:x+wi, i] = torch.where(
+                    mask_tensor[:hi, :wi] > 0,
+                    img_tensor[:hi, :wi, i],
+                    picture_tensor[y:y+hi, x:x+wi, i]
+                )
+        else:
+            # For grayscale or single channel
+            picture_tensor[y:y+hi, x:x+wi] = torch.where(
+                mask_tensor[:hi, :wi] > 0,
+                img_tensor[:hi, :wi],
+                picture_tensor[y:y+hi, x:x+wi]
             )
     else:
-        # 如果没有遮罩，直接替换像素
-        picture[y:y+hi, x:x+wi] = img[:hi, :wi]
+        # No mask, directly replace pixels
+        picture_tensor[y:y+hi, x:x+wi] = img_tensor[:hi, :wi]
 
-    return picture
+    return to_numpy(picture_tensor)
 
 
 

@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
+import torch
+
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -16,12 +19,12 @@ class LumContrast(Effect):
         """Apply the effect to the clip."""
 
         def image_filter(im):
-            im = 1.0 * im  # float conversion
+            # Convert to tensor and apply luminosity-contrast correction
+            tensor = to_tensor(im, dtype=torch.float32)
             corrected = (
-                im + self.lum + self.contrast * (im - float(self.contrast_threshold))
+                tensor + self.lum + self.contrast * (tensor - float(self.contrast_threshold))
             )
-            corrected[corrected < 0] = 0
-            corrected[corrected > 255] = 255
-            return corrected.astype("uint8")
+            corrected = torch.clamp(corrected, 0, 255)
+            return to_numpy(corrected.to(torch.uint8))
 
         return clip.image_transform(image_filter)

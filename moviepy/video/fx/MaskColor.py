@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-import numpy as np
+import torch
 
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -27,7 +28,7 @@ class MaskColor(Effect):
 
     def apply(self, clip: Clip) -> Clip:
         """Apply the effect to the clip."""
-        color = np.array(self.color)
+        color_tensor = torch.tensor(self.color, dtype=torch.float32)
 
         def hill(x):
             if self.threshold:
@@ -38,7 +39,19 @@ class MaskColor(Effect):
                 return 1.0 * (x != 0)
 
         def flim(im):
-            return hill(np.sqrt(((im - color) ** 2).sum(axis=2)))
+            # Convert to tensor
+            tensor = to_tensor(im, dtype=torch.float32)
+            
+            # Move color to same device
+            color = color_tensor.to(tensor.device)
+            
+            # Calculate euclidean distance from color
+            diff = tensor - color
+            distance = torch.sqrt((diff ** 2).sum(dim=2))
+            
+            # Apply hill function
+            result = hill(distance)
+            return to_numpy(result)
 
         mask = clip.image_transform(flim)
         mask.is_mask = True
