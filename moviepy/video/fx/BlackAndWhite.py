@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 
-import numpy as np
+import torch
 
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -25,14 +26,26 @@ class BlackAndWhite(Effect):
         if self.RGB == "CRT_phosphor":
             self.RGB = [0.2125, 0.7154, 0.0721]
 
-        R, G, B = (
-            1.0
-            * np.array(self.RGB)
-            / (sum(self.RGB) if self.preserve_luminosity else 1)
-        )
+        rgb_weights = torch.tensor(self.RGB, dtype=torch.float32)
+        if self.preserve_luminosity:
+            rgb_weights = rgb_weights / rgb_weights.sum()
 
         def filter(im):
-            im = R * im[:, :, 0] + G * im[:, :, 1] + B * im[:, :, 2]
-            return np.dstack(3 * [im]).astype("uint8")
+            # Convert to tensor
+            tensor = to_tensor(im, dtype=torch.float32)
+            
+            # Move weights to same device as tensor
+            weights = rgb_weights.to(tensor.device)
+            
+            # Apply weighted sum across color channels
+            gray = (
+                weights[0] * tensor[:, :, 0]
+                + weights[1] * tensor[:, :, 1]
+                + weights[2] * tensor[:, :, 2]
+            )
+            
+            # Stack to create 3-channel grayscale image
+            result = torch.stack([gray, gray, gray], dim=2)
+            return to_numpy(result.to(torch.uint8))
 
         return clip.image_transform(filter)

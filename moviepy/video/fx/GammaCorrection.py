@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
+import torch
+
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -14,7 +17,9 @@ class GammaCorrection(Effect):
         """Apply the effect to the clip."""
 
         def filter(im):
-            corrected = 255 * (1.0 * im / 255) ** self.gamma
-            return corrected.astype("uint8")
+            # Convert to tensor, apply gamma correction, return numpy
+            tensor = to_tensor(im, dtype=torch.float32)
+            corrected = 255 * (tensor / 255) ** self.gamma
+            return to_numpy(corrected.to(torch.uint8))
 
         return clip.image_transform(filter)

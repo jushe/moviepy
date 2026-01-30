@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-import numpy as np
+import torch
 
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -24,13 +25,23 @@ class FadeIn(Effect):
         if self.initial_color is None:
             self.initial_color = 0 if clip.is_mask else [0, 0, 0]
 
-        self.initial_color = np.array(self.initial_color)
+        initial_color_tensor = torch.tensor(self.initial_color, dtype=torch.float32)
 
         def filter(get_frame, t):
             if t >= self.duration:
                 return get_frame(t)
             else:
+                frame = get_frame(t)
                 fading = 1.0 * t / self.duration
-                return fading * get_frame(t) + (1 - fading) * self.initial_color
+                
+                # Convert to tensor
+                tensor = to_tensor(frame, dtype=torch.float32)
+                
+                # Move initial_color to same device
+                init_color = initial_color_tensor.to(tensor.device)
+                
+                # Apply fading
+                result = fading * tensor + (1 - fading) * init_color
+                return to_numpy(result)
 
         return clip.transform(filter)

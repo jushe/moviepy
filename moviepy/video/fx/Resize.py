@@ -2,10 +2,11 @@ import numbers
 from dataclasses import dataclass
 from typing import Union
 
-import numpy as np
-from PIL import Image
+import torch
+import torchvision.transforms.functional as TF
 
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -46,11 +47,24 @@ class Resize(Effect):
     apply_to_mask: bool = True
 
     def resizer(self, pic, new_size):
-        """Resize the image using PIL."""
+        """Resize the image using PyTorch."""
         new_size = list(map(int, new_size))
-        pil_img = Image.fromarray(pic)
-        resized_pil = pil_img.resize(new_size, Image.Resampling.LANCZOS)
-        return np.array(resized_pil)
+        # Convert to tensor if needed
+        tensor = to_tensor(pic)
+        
+        # Ensure tensor is in (C, H, W) format for torchvision
+        if tensor.ndim == 3:
+            # Convert from (H, W, C) to (C, H, W)
+            tensor = tensor.permute(2, 0, 1)
+        
+        # Resize using torch - new_size is (width, height) but resize expects (height, width)
+        resized = TF.resize(tensor, [new_size[1], new_size[0]], interpolation=TF.InterpolationMode.BILINEAR)
+        
+        # Convert back to (H, W, C) format
+        if resized.ndim == 3:
+            resized = resized.permute(1, 2, 0)
+        
+        return to_numpy(resized)
 
     def apply(self, clip):
         """Apply the effect to the clip."""

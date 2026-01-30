@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-import numpy as np
+import torch
 
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -27,13 +28,23 @@ class FadeOut(Effect):
         if self.final_color is None:
             self.final_color = 0 if clip.is_mask else [0, 0, 0]
 
-        self.final_color = np.array(self.final_color)
+        final_color_tensor = torch.tensor(self.final_color, dtype=torch.float32)
 
         def filter(get_frame, t):
             if (clip.duration - t) >= self.duration:
                 return get_frame(t)
             else:
+                frame = get_frame(t)
                 fading = 1.0 * (clip.duration - t) / self.duration
-                return fading * get_frame(t) + (1 - fading) * self.final_color
+                
+                # Convert to tensor
+                tensor = to_tensor(frame, dtype=torch.float32)
+                
+                # Move final_color to same device
+                fin_color = final_color_tensor.to(tensor.device)
+                
+                # Apply fading
+                result = fading * tensor + (1 - fading) * fin_color
+                return to_numpy(result)
 
         return clip.transform(filter)

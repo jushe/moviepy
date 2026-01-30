@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
+import torch
+
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -15,4 +18,11 @@ class InvertColors(Effect):
     def apply(self, clip: Clip) -> Clip:
         """Apply the effect to the clip."""
         maxi = 1.0 if clip.is_mask else 255
-        return clip.image_transform(lambda f: maxi - f)
+        
+        def invert_func(frame):
+            # Convert to tensor, perform inversion, return numpy for compatibility
+            tensor = to_tensor(frame)
+            inverted = maxi - tensor
+            return to_numpy(inverted)
+        
+        return clip.image_transform(invert_func)

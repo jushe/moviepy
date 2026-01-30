@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-import numpy as np
+import torch
 
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -18,6 +19,11 @@ class MultiplyColor(Effect):
 
     def apply(self, clip: Clip) -> Clip:
         """Apply the effect to the clip."""
-        return clip.image_transform(
-            lambda frame: np.minimum(255, (self.factor * frame)).astype("uint8")
-        )
+        
+        def multiply_func(frame):
+            # Convert to tensor, perform multiplication with clipping, return numpy
+            tensor = to_tensor(frame, dtype=torch.float32)
+            result = torch.clamp(self.factor * tensor, 0, 255)
+            return to_numpy(result.to(torch.uint8))
+        
+        return clip.image_transform(multiply_func)

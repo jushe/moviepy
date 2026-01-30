@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
+import torch
+
 from moviepy.Clip import Clip
 from moviepy.Effect import Effect
+from moviepy.torch_utils import to_tensor, to_numpy
 
 
 @dataclass
@@ -72,9 +75,10 @@ class Crop(Effect):
         self.x2 = self.x2 or clip.size[0]
         self.y2 = self.y2 or clip.size[1]
 
-        return clip.image_transform(
-            lambda frame: frame[
-                int(self.y1) : int(self.y2), int(self.x1) : int(self.x2)
-            ],
-            apply_to=["mask"],
-        )
+        def crop_func(frame):
+            # Convert to tensor, crop using indexing, return numpy
+            tensor = to_tensor(frame)
+            cropped = tensor[int(self.y1) : int(self.y2), int(self.x1) : int(self.x2)]
+            return to_numpy(cropped)
+
+        return clip.image_transform(crop_func, apply_to=["mask"])
