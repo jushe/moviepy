@@ -52,17 +52,25 @@ class Resize(Effect):
         # Convert to tensor if needed
         tensor = to_tensor(pic)
         
-        # Ensure tensor is in (C, H, W) format for torchvision
-        if tensor.ndim == 3:
-            # Convert from (H, W, C) to (C, H, W)
+        # Handle different tensor shapes
+        if tensor.ndim == 2:
+            # Grayscale/mask image (H, W) - add batch and channel dimensions
+            tensor = tensor.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+            # Resize - new_size is (width, height) but resize expects (height, width)
+            resized = TF.resize(tensor, [new_size[1], new_size[0]], interpolation=TF.InterpolationMode.BILINEAR)
+            # Remove batch and channel dimensions
+            resized = resized.squeeze(0).squeeze(0)  # (H, W)
+        elif tensor.ndim == 3:
+            # RGB image (H, W, C) - convert to (C, H, W)
             tensor = tensor.permute(2, 0, 1)
-        
-        # Resize using torch - new_size is (width, height) but resize expects (height, width)
-        resized = TF.resize(tensor, [new_size[1], new_size[0]], interpolation=TF.InterpolationMode.BILINEAR)
-        
-        # Convert back to (H, W, C) format
-        if resized.ndim == 3:
-            resized = resized.permute(1, 2, 0)
+            # Add batch dimension
+            tensor = tensor.unsqueeze(0)  # (1, C, H, W)
+            # Resize using torch - new_size is (width, height) but resize expects (height, width)
+            resized = TF.resize(tensor, [new_size[1], new_size[0]], interpolation=TF.InterpolationMode.BILINEAR)
+            # Remove batch dimension and convert back to (H, W, C) format
+            resized = resized.squeeze(0).permute(1, 2, 0)
+        else:
+            raise ValueError(f"Unexpected tensor shape: {tensor.shape}")
         
         return to_numpy(resized)
 
